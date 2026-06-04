@@ -1,0 +1,43 @@
+# ─────────────────────────────────────────────────────
+# EquityLens AI — .gitignore
+# ─────────────────────────────────────────────────────
+
+# Secrets — NEVER commit these
+.env
+
+# Generated vector store (large binary)
+data/vector_store/
+*.pkl
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Tests
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# Logs
+*.log
+logs/

@@ -1,0 +1,33 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────
+# EquityLens AI — Docker Compose
+# Development & production configuration
+# ─────────────────────────────────────────────────────
+
+services:
+  equitylens:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: app
+    container_name: equitylens-ai
+    ports:
+      - "8501:8501"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LLM_MODEL=${LLM_MODEL:-gpt-3.5-turbo-instruct}
+    volumes:
+      # Persist vector store and history between container restarts
+      - equitylens_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  equitylens_data:
+    driver: local
