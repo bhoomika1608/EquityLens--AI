@@ -99,16 +99,16 @@ def test_get_history_stats_empty(tmp_path, monkeypatch):
 # RAG pipeline: unit tests with mocks
 # ─────────────────────────────────────────────
 
-@patch("src.utils.rag_pipeline.UnstructuredURLLoader")
+@patch("src.utils.rag_pipeline.requests.get")
 @patch("langchain_community.embeddings.OpenAIEmbeddings")
 @patch("src.utils.rag_pipeline.FAISS")
 @patch("src.utils.rag_pipeline._save_vector_store")
-def test_build_vector_store_calls_pipeline(mock_save, mock_faiss, mock_embeddings, mock_loader, tmp_path, monkeypatch):
-    """build_vector_store should call loader, splitter, embeddings, and FAISS."""
-    # Mock loader to return a fake document
-    fake_doc = MagicMock()
-    fake_doc.page_content = "Apple Inc reported record earnings this quarter. " * 30
-    mock_loader.return_value.load.return_value = [fake_doc]
+def test_build_vector_store_calls_pipeline(mock_save, mock_faiss, mock_embeddings, mock_get, tmp_path, monkeypatch):
+    """build_vector_store should call requests.get, splitter, embeddings, and FAISS."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.text = "Apple Inc reported record earnings this quarter. " * 30
+    mock_get.return_value = mock_resp
 
     # Mock FAISS.from_documents
     mock_faiss_instance = MagicMock()
@@ -133,7 +133,7 @@ def test_build_vector_store_calls_pipeline(mock_save, mock_faiss, mock_embedding
 
     result = build_vector_store(urls=["https://example.com/article"])
 
-    mock_loader.assert_called_once()
+    mock_get.assert_called_once()
     mock_faiss.from_documents.assert_called_once()
     # The result should be the mock FAISS instance
     assert result == mock_faiss_instance
@@ -141,8 +141,10 @@ def test_build_vector_store_calls_pipeline(mock_save, mock_faiss, mock_embedding
 
 def test_build_vector_store_raises_on_empty_docs(monkeypatch):
     """build_vector_store should raise ValueError when no content is loaded."""
-    with patch("src.utils.rag_pipeline.UnstructuredURLLoader") as mock_loader:
-        mock_loader.return_value.load.return_value = []
+    with patch("src.utils.rag_pipeline.requests.get") as mock_get:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 404
+        mock_get.return_value = mock_resp
 
         from src.utils.rag_pipeline import build_vector_store
 

@@ -14,7 +14,9 @@ import pickle
 from pathlib import Path
 from typing import Callable, Optional
 
-from langchain_community.document_loaders import UnstructuredURLLoader
+import requests
+from bs4 import BeautifulSoup
+from langchain_core.documents import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain.chains import RetrievalQAWithSourcesChain
@@ -154,11 +156,33 @@ def build_vector_store(
 
     # ── Step 1: Load documents from URLs ──
     _progress("Loading articles from URLs…", 10)
+    documents = []
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
-    loader = UnstructuredURLLoader(urls=urls, headers=headers)
-    documents = loader.load()
+    for url in urls:
+        try:
+            logger.info("Fetching URL: %s", url)
+            response = requests.get(url, headers=headers, timeout=15)
+            if response.status_code != 200:
+                logger.error("Failed to fetch %s: Status %d", url, response.status_code)
+                continue
+            
+            soup = BeautifulSoup(response.text, "html.parser")
+            for elem in soup(["script", "style", "nav", "footer", "header", "aside"]):
+                elem.decompose()
+                
+            text = soup.get_text(separator="\n")
+            lines = (line.strip() for line in text.splitlines())
+            chunks_text = (phrase.strip() for line in lines for phrase in line.split("  "))
+            clean_text = "\n".join(chunk for chunk in chunks_text if chunk)
+            
+            if clean_text:
+                documents.append(Document(page_content=clean_text, metadata={"source": url}))
+            else:
+                logger.warning("Empty content extracted from %s", url)
+        except Exception as e:
+            logger.error("Error loading URL %s: %s", url, str(e))
 
     if not documents:
         raise ValueError(
