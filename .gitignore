@@ -1,43 +1,71 @@
-# ─────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 # EquityLens AI — .gitignore
-# ─────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 
-# Secrets — NEVER commit these
+# ── Secrets & Credentials (NEVER commit these) ─────────────
 .env
+.env.local
+.env.production
+*.pem
+*.key
+secrets/
 
-# Generated vector store (large binary)
+# ── Runtime / Generated Data ────────────────────────────────
 data/vector_store/
+data/history/
 *.pkl
+*.faiss
 
-# Python
+# ── Python ──────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
+*$py.class
 *.egg-info/
 dist/
 build/
 .eggs/
 *.egg
+.Python
+
+# ── Virtual Environments ────────────────────────────────────
 .venv/
 venv/
 env/
+ENV/
+.conda/
 
-# Streamlit
+# ── HuggingFace / ML Model Cache ────────────────────────────
+.cache/
+models/
+*.bin
+*.safetensors
+
+# ── Streamlit ────────────────────────────────────────────────
 .streamlit/secrets.toml
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-.DS_Store
-Thumbs.db
-
-# Tests
+# ── Testing ──────────────────────────────────────────────────
 .pytest_cache/
 htmlcov/
 .coverage
 coverage.xml
+*.coveragerc
 
-# Logs
+# ── IDEs ─────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── OS ───────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Logs ─────────────────────────────────────────────────────
 *.log
 logs/
+
+# ── Legacy / Deprecated ──────────────────────────────────────
+main.py
+requirments.txt
+faiss_store_openai.pkl
