@@ -57,6 +57,8 @@ class LLMConfig:
     @property
     def provider_name(self) -> str:
         """Human-readable provider label for the UI."""
+        if "groq.com" in self.llm_base_url.lower():
+            return "Groq"
         if self.grok_api_key:
             return "xAI Grok"
         if self.openai_api_key:
