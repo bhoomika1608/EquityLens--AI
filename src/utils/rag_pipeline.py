@@ -4,9 +4,9 @@ rag_pipeline.py — Core RAG (Retrieval-Augmented Generation) pipeline.
 Handles:
   - URL content loading
   - Text splitting / chunking
-  - OpenAI embedding generation
+  - Embedding generation (local HuggingFace OR OpenAI)
   - FAISS vector store creation & persistence
-  - Retrieval QA chain execution
+  - Retrieval QA chain execution via xAI Grok or OpenAI (both OpenAI-compatible)
 """
 
 import time
@@ -16,15 +16,71 @@ from typing import Callable, Optional
 
 from langchain_community.document_loaders import UnstructuredURLLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain_openai import OpenAI
 from langchain.chains import RetrievalQAWithSourcesChain
 
 from src.config import llm_config, vector_config
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+# ─────────────────────────────────────────────
+# Embedding factory
+# ─────────────────────────────────────────────
+
+def _get_embeddings():
+    """
+    Return the appropriate embedding model based on config.
+
+    "local"  → HuggingFaceEmbeddings (all-MiniLM-L6-v2, free, runs on CPU)
+    "openai" → OpenAIEmbeddings (requires OPENAI_API_KEY)
+    """
+    if llm_config.embedding_provider == "local":
+        logger.info("Using local HuggingFace embeddings (%s)", llm_config.local_embedding_model)
+        from langchain_community.embeddings import HuggingFaceEmbeddings
+        return HuggingFaceEmbeddings(
+            model_name=llm_config.local_embedding_model,
+            model_kwargs={"device": "cpu"},
+            encode_kwargs={"normalize_embeddings": True},
+        )
+    else:
+        logger.info("Using OpenAI embeddings (%s)", llm_config.embedding_model)
+        from langchain_community.embeddings import OpenAIEmbeddings
+        return OpenAIEmbeddings(
+            openai_api_key=llm_config.active_api_key,
+            model=llm_config.embedding_model,
+        )
+
+
+# ─────────────────────────────────────────────
+# LLM factory (OpenAI-compatible SDK for both Grok and OpenAI)
+# ─────────────────────────────────────────────
+
+def _get_llm():
+    """
+    Return a LangChain-compatible LLM.
+
+    Uses langchain_openai.ChatOpenAI which supports any OpenAI-compatible API
+    (xAI Grok, OpenAI, Together, etc.) via the `base_url` parameter.
+    """
+    from langchain_openai import ChatOpenAI
+
+    kwargs = dict(
+        api_key=llm_config.active_api_key,
+        model=llm_config.model_name,
+        temperature=llm_config.temperature,
+        max_tokens=llm_config.max_tokens,
+    )
+
+    # Add base_url only for non-OpenAI providers
+    if llm_config.llm_base_url and "openai.com" not in llm_config.llm_base_url:
+        kwargs["base_url"] = llm_config.llm_base_url
+        logger.info("LLM provider: %s @ %s", llm_config.model_name, llm_config.llm_base_url)
+    else:
+        logger.info("LLM provider: OpenAI @ %s", llm_config.model_name)
+
+    return ChatOpenAI(**kwargs)
 
 
 # ─────────────────────────────────────────────
@@ -116,15 +172,14 @@ def build_vector_store(
         chunk_overlap=vector_config.chunk_overlap,
     )
     chunks = splitter.split_documents(documents)
-    logger.info("Split into %d chunks (size=%d, overlap=%d)",
-                len(chunks), vector_config.chunk_size, vector_config.chunk_overlap)
+    logger.info(
+        "Split into %d chunks (size=%d, overlap=%d)",
+        len(chunks), vector_config.chunk_size, vector_config.chunk_overlap,
+    )
 
     # ── Step 3: Generate embeddings ──
     _progress("Generating semantic embeddings…", 60)
-    embeddings = OpenAIEmbeddings(
-        openai_api_key=llm_config.openai_api_key,
-        model=llm_config.embedding_model,
-    )
+    embeddings = _get_embeddings()
 
     # ── Step 4: Build FAISS index ──
     _progress("Building FAISS vector index…", 80)
@@ -135,7 +190,7 @@ def build_vector_store(
     _save_vector_store(vector_store)
 
     _progress("Index built successfully!", 100)
-    time.sleep(0.5)  # brief pause so progress UI registers 100%
+    time.sleep(0.5)
     return vector_store
 
 
@@ -151,7 +206,7 @@ def query_vector_store(question: str) -> dict:
         question: The user's natural-language question.
 
     Returns:
-        dict with keys: "answer" (str), "sources" (list[str]), "confidence" (float)
+        dict with keys: "answer" (str), "sources" (list[str]), "confidence" (int)
 
     Raises:
         FileNotFoundError: If no vector store has been built yet.
@@ -165,15 +220,11 @@ def query_vector_store(question: str) -> dict:
 
     logger.info("Running RAG query: %r", question[:80])
 
-    # Instantiate the LLM
-    llm = OpenAI(
-        openai_api_key=llm_config.openai_api_key,
-        model_name=llm_config.model_name,
-        temperature=llm_config.temperature,
-        max_tokens=llm_config.max_tokens,
-    )
+    llm = _get_llm()
 
-    # Build retrieval chain
+    # Reload embeddings to rebuild the retriever with the same embedding space
+    embeddings = _get_embeddings()
+
     chain = RetrievalQAWithSourcesChain.from_llm(
         llm=llm,
         retriever=vector_store.as_retriever(
@@ -181,7 +232,6 @@ def query_vector_store(question: str) -> dict:
         ),
     )
 
-    # Execute query
     raw_result: dict = chain({"question": question}, return_only_outputs=True)
 
     # Parse and normalise sources
@@ -192,7 +242,7 @@ def query_vector_store(question: str) -> dict:
         else []
     )
 
-    # Compute a simple heuristic confidence score (0–100)
+    # Heuristic confidence score (0–100)
     answer_len = len(raw_result.get("answer", ""))
     confidence = min(100, max(40, int(answer_len / 8)))
 
@@ -202,6 +252,8 @@ def query_vector_store(question: str) -> dict:
         "confidence": confidence,
     }
 
-    logger.info("Query completed. Answer length=%d, Sources=%d, Confidence=%d%%",
-                answer_len, len(sources_list), confidence)
+    logger.info(
+        "Query completed. Answer length=%d, Sources=%d, Confidence=%d%%",
+        answer_len, len(sources_list), confidence,
+    )
     return result
