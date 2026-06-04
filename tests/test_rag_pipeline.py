@@ -100,9 +100,10 @@ def test_get_history_stats_empty(tmp_path, monkeypatch):
 # ─────────────────────────────────────────────
 
 @patch("src.utils.rag_pipeline.UnstructuredURLLoader")
-@patch("src.utils.rag_pipeline.OpenAIEmbeddings")
+@patch("langchain_community.embeddings.OpenAIEmbeddings")
 @patch("src.utils.rag_pipeline.FAISS")
-def test_build_vector_store_calls_pipeline(mock_faiss, mock_embeddings, mock_loader, tmp_path, monkeypatch):
+@patch("src.utils.rag_pipeline._save_vector_store")
+def test_build_vector_store_calls_pipeline(mock_save, mock_faiss, mock_embeddings, mock_loader, tmp_path, monkeypatch):
     """build_vector_store should call loader, splitter, embeddings, and FAISS."""
     # Mock loader to return a fake document
     fake_doc = MagicMock()
