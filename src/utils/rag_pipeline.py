@@ -210,7 +210,7 @@ def build_vector_store(
 
     # ── Step 4: Build FAISS index ──
     _progress("Building FAISS vector index…", 80)
-    vector_store = FAISS.from_documents(chunks, embeddings=embeddings)
+    vector_store = FAISS.from_documents(chunks, embedding=embeddings)
 
     # ── Step 5: Persist to disk ──
     _progress("Saving index to disk…", 95)
